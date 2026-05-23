@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ApiLiveRouteImport } from './routes/api/live'
+import { Route as ApiImportSnapshotRouteImport } from './routes/api/import-snapshot'
 import { Route as ApiHealthRouteImport } from './routes/api/health'
 
 const IndexRoute = IndexRouteImport.update({
@@ -23,6 +24,11 @@ const ApiLiveRoute = ApiLiveRouteImport.update({
   path: '/api/live',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiImportSnapshotRoute = ApiImportSnapshotRouteImport.update({
+  id: '/api/import-snapshot',
+  path: '/api/import-snapshot',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiHealthRoute = ApiHealthRouteImport.update({
   id: '/api/health',
   path: '/api/health',
@@ -32,30 +38,34 @@ const ApiHealthRoute = ApiHealthRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/api/health': typeof ApiHealthRoute
+  '/api/import-snapshot': typeof ApiImportSnapshotRoute
   '/api/live': typeof ApiLiveRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/api/health': typeof ApiHealthRoute
+  '/api/import-snapshot': typeof ApiImportSnapshotRoute
   '/api/live': typeof ApiLiveRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/api/health': typeof ApiHealthRoute
+  '/api/import-snapshot': typeof ApiImportSnapshotRoute
   '/api/live': typeof ApiLiveRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/api/health' | '/api/live'
+  fullPaths: '/' | '/api/health' | '/api/import-snapshot' | '/api/live'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/api/health' | '/api/live'
-  id: '__root__' | '/' | '/api/health' | '/api/live'
+  to: '/' | '/api/health' | '/api/import-snapshot' | '/api/live'
+  id: '__root__' | '/' | '/api/health' | '/api/import-snapshot' | '/api/live'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   ApiHealthRoute: typeof ApiHealthRoute
+  ApiImportSnapshotRoute: typeof ApiImportSnapshotRoute
   ApiLiveRoute: typeof ApiLiveRoute
 }
 
@@ -75,6 +85,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiLiveRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/import-snapshot': {
+      id: '/api/import-snapshot'
+      path: '/api/import-snapshot'
+      fullPath: '/api/import-snapshot'
+      preLoaderRoute: typeof ApiImportSnapshotRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/health': {
       id: '/api/health'
       path: '/api/health'
@@ -88,6 +105,7 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ApiHealthRoute: ApiHealthRoute,
+  ApiImportSnapshotRoute: ApiImportSnapshotRoute,
   ApiLiveRoute: ApiLiveRoute,
 }
 export const routeTree = rootRouteImport

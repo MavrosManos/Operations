@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { env } from "cloudflare:workers";
 
 function json(data: unknown, status = 200) {
   return new Response(JSON.stringify(data, null, 2), {
@@ -14,13 +15,19 @@ export const Route = createFileRoute("/api/live")({
   server: {
     handlers: {
       GET: async () => {
-        return json(
-          {
-            ok: false,
-            error: "NO_LIVE_DATA_YET",
-          },
-          404
-        );
+        const latest = await env.AUTOWAY_OPS_KV.get("latest:json", "json");
+
+        if (!latest) {
+          return json(
+            {
+              ok: false,
+              error: "NO_LIVE_DATA_YET",
+            },
+            404
+          );
+        }
+
+        return json(latest);
       },
     },
   },
