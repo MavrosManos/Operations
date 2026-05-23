@@ -3,24 +3,50 @@ import type { LiveResponse } from "./types";
 export const API_BASE_URL =
   (import.meta.env.VITE_API_BASE_URL as string | undefined)?.replace(/\/+$/, "") || "";
 
-export const LIVE_URL = `${API_BASE_URL}/api/live`;
-export const HEALTH_URL = `${API_BASE_URL}/api/health`;
+function apiUrl(path: string) {
+  const cleanPath = path.startsWith("/") ? path : `/${path}`;
+  return API_BASE_URL ? `${API_BASE_URL}${cleanPath}` : cleanPath;
+}
+
+export const LIVE_URL = apiUrl("/api/live");
+export const HEALTH_URL = apiUrl("/api/health");
 
 export async function fetchLive(signal?: AbortSignal): Promise<LiveResponse> {
-  if (!API_BASE_URL) {
-    throw new Error(
-      "VITE_API_BASE_URL is not set. Set it to your Worker URL (e.g. https://autoway-ops-live.example.workers.dev) and rebuild.",
-    );
+  const res = await fetch(LIVE_URL, {
+    signal,
+    cache: "no-store",
+    headers: {
+      accept: "application/json",
+    },
+  });
+
+  const text = await res.text();
+
+  let json: any = null;
+
+  try {
+    json = text ? JSON.parse(text) : null;
+  } catch {
+    throw new Error(`Invalid JSON from ${LIVE_URL}: ${text.slice(0, 300)}`);
   }
-  const res = await fetch(LIVE_URL, { signal, cache: "no-store" });
-  if (!res.ok) throw new Error(`API ${res.status} ${res.statusText}`);
-  return (await res.json()) as LiveResponse;
+
+  if (!res.ok) {
+    throw new Error(json?.error || `API ${res.status} ${res.statusText}`);
+  }
+
+  return json as LiveResponse;
 }
 
 export async function fetchHealth(signal?: AbortSignal): Promise<boolean> {
-  if (!API_BASE_URL) return false;
   try {
-    const res = await fetch(HEALTH_URL, { signal, cache: "no-store" });
+    const res = await fetch(HEALTH_URL, {
+      signal,
+      cache: "no-store",
+      headers: {
+        accept: "application/json",
+      },
+    });
+
     return res.ok;
   } catch {
     return false;

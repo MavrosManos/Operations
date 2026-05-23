@@ -71,10 +71,6 @@ function Index() {
   }, []);
 
   useEffect(() => {
-    if (!API_BASE_URL) {
-      setError("VITE_API_BASE_URL is not set.");
-      return;
-    }
     load();
   }, [load]);
 
