@@ -6,7 +6,6 @@
     "nodejs_compat"
   ],
   "main": "@tanstack/react-start/server-entry",
-  "migrations_dir": "migrations",
   "kv_namespaces": [
     {
       "binding": "AUTOWAY_OPS_KV",
@@ -26,11 +25,6 @@
     "producers": [
       {
         "binding": "autoway_ops_snapshots",
-        "queue": "autoway-ops-snapshots"
-      }
-    ],
-    "consumers": [
-      {
         "queue": "autoway-ops-snapshots"
       }
     ]
