@@ -35,7 +35,7 @@ function formatAthensTime(iso: string): string {
       minute: "2-digit",
       second: "2-digit",
     }).format(new Date(iso));
-  } catch (err) {
+  } catch {
     return iso;
   }
 }
@@ -196,7 +196,7 @@ export const Route = createFileRoute("/api/import-snapshot")({
 
         try {
           payload = await request.json();
-        } catch (err) {
+        } catch {
           return json(
             {
               ok: false,
@@ -225,82 +225,6 @@ export const Route = createFileRoute("/api/import-snapshot")({
           batchId,
         });
 
-        await env.autoway_ops_live
-          .prepare(
-            `
-            INSERT OR REPLACE INTO snapshots (
-              id,
-              run_id,
-              batch_id,
-              created_at,
-              processed_at,
-              status,
-              error,
-              stats_json,
-              digest_meta_json,
-              payload_json,
-              html
-            )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-          `
-          )
-          .bind(
-            snapshotId,
-            runId,
-            batchId,
-            now,
-            now,
-            "processed",
-            null,
-            JSON.stringify(stats),
-            JSON.stringify(digestMeta),
-            JSON.stringify(payload),
-            html
-          )
-          .run();
-
-        for (const issue of issues) {
-          await env.autoway_ops_live
-            .prepare(
-              `
-              INSERT OR REPLACE INTO issues (
-                id,
-                snapshot_id,
-                run_id,
-                batch_id,
-                issue_key,
-                issue_title,
-                res_no,
-                bucket,
-                severity,
-                urgency_key,
-                status,
-                payload_json,
-                created_at,
-                updated_at
-              )
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            `
-            )
-            .bind(
-              issue.id,
-              snapshotId,
-              runId,
-              batchId,
-              issue.issueKey,
-              issue.issueTitle,
-              issue.resNo,
-              issue.bucket,
-              issue.severity,
-              issue.urgencyKey,
-              "open",
-              JSON.stringify(issue),
-              now,
-              now
-            )
-            .run();
-        }
-
         const latest = {
           ok: true,
           snapshotId,
@@ -314,6 +238,11 @@ export const Route = createFileRoute("/api/import-snapshot")({
           issues,
         };
 
+        /*
+         * Fast path:
+         * The live dashboard reads only these KV keys.
+         * This must happen before any slow history work.
+         */
         await env.AUTOWAY_OPS_KV.put("latest:json", JSON.stringify(latest));
         await env.AUTOWAY_OPS_KV.put("latest:html", html);
         await env.AUTOWAY_OPS_KV.put(
@@ -328,10 +257,61 @@ export const Route = createFileRoute("/api/import-snapshot")({
           })
         );
 
+        /*
+         * Lightweight D1 history only.
+         * No per-issue inserts in V1. Those were the slow part.
+         */
+        try {
+          await env.autoway_ops_live
+            .prepare(
+              `
+              INSERT OR REPLACE INTO snapshots (
+                id,
+                run_id,
+                batch_id,
+                created_at,
+                processed_at,
+                status,
+                error,
+                stats_json,
+                digest_meta_json,
+                payload_json,
+                html
+              )
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `
+            )
+            .bind(
+              snapshotId,
+              runId,
+              batchId,
+              now,
+              now,
+              "processed_kv_first",
+              null,
+              JSON.stringify(stats),
+              JSON.stringify(digestMeta),
+              JSON.stringify({
+                version: payload.version || 1,
+                source: payload.source || "",
+                snapshotId,
+                runId,
+                batchId,
+                computedAt: payload.computedAt || "",
+                issueCount: issues.length,
+              }),
+              html ? html.slice(0, 250000) : ""
+            )
+            .run();
+        } catch (d1Err) {
+          console.error("D1_SNAPSHOT_HISTORY_FAILED", d1Err);
+        }
+
         return json({
           ok: true,
           accepted: true,
           processed: true,
+          mode: "KV_FIRST",
           snapshotId,
           runId,
           batchId,
