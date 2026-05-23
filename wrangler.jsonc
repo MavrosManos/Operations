@@ -1,7 +1,24 @@
 {
-  "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "operations",
-  "compatibility_date": "2025-09-24",
-  "compatibility_flags": ["nodejs_compat"],
-  "main": "@tanstack/react-start/server-entry"
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "operations",
+	"compatibility_date": "2025-09-24",
+	"compatibility_flags": [
+		"nodejs_compat"
+	],
+	"main": "@tanstack/react-start/server-entry",
+	"kv_namespaces": [
+		{
+			"binding": "AUTOWAY_OPS_KV",
+			"id": "fa79d369ef5549908bd58976213940a6",
+			"remote": true
+		}
+	],
+	"d1_databases": [
+		{
+			"binding": "autoway_ops_live",
+			"database_name": "autoway_ops_live",
+			"database_id": "10473151-7b7a-4a16-9d94-dad5bb291019",
+			"remote": true
+		}
+	]
 }
