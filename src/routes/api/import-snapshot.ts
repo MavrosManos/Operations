@@ -172,6 +172,168 @@ async function buildIssuesFromPayload(payload: AnyRecord, ctx: AnyRecord): Promi
   return out;
 }
 
+
+function parseMatrixDateMs(value: unknown): number {
+  if (!value) return 0;
+
+  if (value instanceof Date) {
+    const ms = value.getTime();
+    return Number.isFinite(ms) ? ms : 0;
+  }
+
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+
+  const text = String(value || "").trim();
+  if (!text) return 0;
+
+  const direct = new Date(text).getTime();
+  if (Number.isFinite(direct)) return direct;
+
+  const euro = text.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:\s+(\d{1,2}):(\d{2}))?/);
+  if (euro) {
+    const day = Number(euro[1]);
+    const month = Number(euro[2]);
+    const year = Number(euro[3]);
+    const hour = Number(euro[4] || 0);
+    const minute = Number(euro[5] || 0);
+    const ms = new Date(year, month - 1, day, hour, minute, 0, 0).getTime();
+    return Number.isFinite(ms) ? ms : 0;
+  }
+
+  return 0;
+}
+
+function matrixItemDateMs(item: AnyRecord): number {
+  item = item && typeof item === "object" ? item : {};
+
+  if (typeof item.pickupMs === "number" && Number.isFinite(item.pickupMs)) {
+    return item.pickupMs;
+  }
+
+  if (typeof item.pickupMs === "string") {
+    const n = Number(item.pickupMs);
+    if (Number.isFinite(n) && n > 0) return n;
+  }
+
+  const candidates = [
+    item.pickupText,
+    item.pickupDate,
+    item.pickupDateTime,
+    item.checkOutDate,
+    item.checkoutDate,
+    item.eventDate,
+    item.date,
+    item.formattedDate,
+    item.when,
+    item.time,
+    item.pickupAt,
+    item.rowText,
+  ];
+
+  for (const candidate of candidates) {
+    const ms = parseMatrixDateMs(candidate);
+    if (ms) return ms;
+  }
+
+  return 0;
+}
+
+function withinLookaheadDays(item: AnyRecord, nowIso: string, days: number): boolean {
+  const ms = matrixItemDateMs(item);
+
+  if (!ms) return true;
+
+  const now = new Date(nowIso);
+  const start = new Date(now);
+  start.setHours(0, 0, 0, 0);
+
+  const end = new Date(start);
+  end.setDate(end.getDate() + days);
+  end.setHours(23, 59, 59, 999);
+
+  return ms >= start.getTime() && ms <= end.getTime();
+}
+
+function trimStationChangeMatrix(matrix: AnyRecord, nowIso: string, days = 8): AnyRecord {
+  if (!matrix || typeof matrix !== "object") return matrix;
+  if (!matrix.routes || typeof matrix.routes !== "object") return matrix;
+
+  const out: AnyRecord = {
+    ...matrix,
+    routes: {},
+    lookaheadDays: days,
+    totalKept: 0,
+    totalOmittedByLookahead: 0,
+  };
+
+  for (const routeKey of Object.keys(matrix.routes)) {
+    const route = matrix.routes[routeKey] || {};
+    const plates = route.plates && typeof route.plates === "object" ? route.plates : {};
+
+    const newRoute: AnyRecord = {
+      ...route,
+      plates: {},
+    };
+
+    for (const plateKey of Object.keys(plates)) {
+      const raw = plates[plateKey];
+
+      if (Array.isArray(raw)) {
+        const kept = raw.filter((item) => {
+          const keep = withinLookaheadDays(item || {}, nowIso, days);
+          if (keep) out.totalKept++;
+          else out.totalOmittedByLookahead++;
+          return keep;
+        });
+
+        if (kept.length) {
+          newRoute.plates[plateKey] = kept;
+        }
+
+        continue;
+      }
+
+      const keep = withinLookaheadDays(raw || {}, nowIso, days);
+
+      if (keep) {
+        newRoute.plates[plateKey] = raw;
+        out.totalKept++;
+      } else {
+        out.totalOmittedByLookahead++;
+      }
+    }
+
+    if (Object.keys(newRoute.plates).length > 0) {
+      out.routes[routeKey] = newRoute;
+    }
+  }
+
+  return out;
+}
+
+function capDigestMetaForLive(digestMeta: AnyRecord | null, nowIso: string): AnyRecord | null {
+  if (!digestMeta || typeof digestMeta !== "object") return digestMeta;
+
+  const cappedStationMatrix = trimStationChangeMatrix(
+    digestMeta.stationChangeMatrix,
+    nowIso,
+    8
+  );
+
+  return {
+    ...digestMeta,
+    stationChangeMatrix: cappedStationMatrix,
+    stationChangeMatrixCap: {
+      applied: true,
+      lookaheadDays: 8,
+      appliedAt: nowIso,
+      totalKept: cappedStationMatrix?.totalKept ?? null,
+      totalOmittedByLookahead: cappedStationMatrix?.totalOmittedByLookahead ?? null,
+    },
+  };
+}
+
+
 export const Route = createFileRoute("/api/import-snapshot")({
   server: {
     handlers: {
@@ -217,7 +379,8 @@ export const Route = createFileRoute("/api/import-snapshot")({
 
         const html = cleanString(payload.html || "");
         const stats = payload.stats || null;
-        const digestMeta = payload.digestMeta || payload.digest_meta || null;
+        const rawDigestMeta = payload.digestMeta || payload.digest_meta || null;
+        const digestMeta = capDigestMetaForLive(rawDigestMeta, now);
 
         const issues = await buildIssuesFromPayload(payload, {
           snapshotId,
